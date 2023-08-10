@@ -87,6 +87,9 @@ def download(database):
 ### use PIL to conform the image size
 def conform(database):
     print("\nResizing images")
+    ## dealing with PIL versions changes
+    if not hasattr(Image, "Resampling"):
+        Image.Resampling = Image
     baseheigth = 400
     for img, path in database:
         i = Image.open(path)
