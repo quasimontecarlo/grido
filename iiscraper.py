@@ -13,12 +13,23 @@ import re
 data = []
 url = "https://www.imdb.com/search/title/?role=nm7053849&sort=release_date,desc"
 ue = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
-directory = "/Users/crltt/Library/CloudStorage/Dropbox/wrk/prjts/presentations/source/imgs"
 response = requests.get(url, headers=ue)
 soup = BeautifulSoup(response.content, "html.parser")
 movie_data = soup.findAll("div", attrs={"class": "lister-item mode-advanced"})
 
 #print(movie_data)
+
+def findBaseDir():
+
+    if os.environ["TERM"] == "st-256color":
+        return "/home/crltt/"
+    else:
+        return "/Users/crltt/Library/CloudStorage/"
+
+directory = "%sDropbox/wrk/prjts/presentations/source/imgs" % findBaseDir()
+
+print(directory)
+quit()
 
 for store in movie_data:
     imageDiv = store.find("div", {"class": "lister-item-image float-left"})
