@@ -20,7 +20,6 @@ def findBaseDir():
 
 ### from imdb user search buid a list of tuples database of movies/year
 def scrapeImdb(movie_data, data):
-    print("\nScraping IMDB for user infos")
     for store in movie_data:
         imageDiv = store.find("div", {"class": "lister-item-image float-left"})
         img = imageDiv.img.get("loadlate")
@@ -35,12 +34,13 @@ def scrapeImdb(movie_data, data):
 def searchDuck(data, fullData):
     print("\nSearching DuckDuckGo for images")
     for year, name in data:
+        print(name)
         searchKey = "%s %s US Movie Poster" % (year, name)
         with DDGS() as ddgs:
             keywords = searchKey
             ddgs_images_gen = ddgs.images(
                 keywords,
-                region="wt-wt",
+                region="us-en",
                 safesearch="moderate",
                 size="Large",
                 type_image="photo",
@@ -104,6 +104,8 @@ data = []
 fullData = []
 database = []
 url = "https://www.imdb.com/search/title/?role=nm7053849&sort=release_date,desc"
+# Yosuke Page
+#url = "https://www.imdb.com/search/title/?role=nm7959678&sort=year,desc"
 ue = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
 response = requests.get(url, headers=ue)
 soup = BeautifulSoup(response.content, "html.parser")
