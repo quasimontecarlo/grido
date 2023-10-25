@@ -12,7 +12,7 @@ import urllib
 import argparse
 
 ### TO-DO
-# build argparse
+# build argparse // basic function done, need to implement a more robust solution
 # resize trim to get same width
 # improve image extension handling
 # check if image on pil function
@@ -35,7 +35,11 @@ def scrapeImdb(movie_data, data):
         img = imageDiv.img.get("loadlate")
         name = imageDiv.img.get("alt")
         yearDiv = str(store.find("span", {"class": "lister-item-year text-muted unbold"}))
-        year = re.findall('\(([^)]+)', yearDiv)[-1]
+        year = re.findall('\(([^)]+)', yearDiv)
+        if year:
+            year = year[-1]
+        else:
+            year = "Unreleased"
         data.append((year, name))
     print("\nScrape :: Done")
     return data
@@ -58,29 +62,27 @@ def searchDuck(data, fullData):
             for r in ddgs_images_gen:
                 try:
                     img = r["image"]
-                    urllib.request.urlopen(img)
-                    fullData.append((year, name, img))
+                    i = urllib.request.urlopen(img, timeout=20)
+                    imgType = i.headers["Content-Type"]
+                    if "image" in imgType:
+                        ext = imgType.split("/")[-1]
+                        fullData.append((year, name, img, ext))
+                        print("found movie poster for %s" % name)
                     break
                 except urllib.error.HTTPError as e:
-                    print("%s %s" % (e.reason, searchKey))
+                    print("broken link moving with this reason HTTP Error %s %s, finding next image for %s" % (str(e.code), e.reason, name))
+                except urllib.error.URLError as e:
+                    print("broken link moving with this reason URL Error %s, finding next image for %s" % (e.reason, name))
+                except urllib.error.HTTPxception as e:
+                    print("broken link moving with this reason HTTP Exception, finding next image for %s" % (name))
     print("\nSearch :: Done")
     return fullData
-
-### try to deal with file extentions
-def extMeddle(img):
-    ext = re.findall("(\.[^.]*)$", img)[0]
-    if "jpeg" in ext:
-        ext = ext[:5]
-    else:
-        ext = ext[:4]
-    return ext
 
 ### build the image disk path
 def buildDiskPath(fullData, database):
     print("\nBuilding disk paths")
-    for year, name, img in fullData:
-        ext = extMeddle(img)
-        path = "%s/%s__%s%s" % (directory, year, name.replace(" ", "_").replace(":", ""), ext)
+    for year, name, img, ext in fullData:
+        path = "%s/%s__%s.%s" % (directory, year, name.replace(" ", "_").replace(":", ""), ext)
         database.append((img, path))
     print("\nBuild :: Done")
     return database
