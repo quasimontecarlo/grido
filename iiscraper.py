@@ -9,14 +9,24 @@ import requests
 import wget
 import re
 import urllib
+import argparse
 
-### check terminal env to evaluate system and change basepath
-def findBaseDir():
+### TO-DO
+# build argparse
+# resize trim to get same width
+# improve image extension handling
+# check if image on pil function
 
-    if os.environ["TERM"] == "st-256color":
-        return "/home/crltt/"
-    else:
-        return "/Users/crltt/Library/CloudStorage/"
+### cli arguments build
+parser = argparse.ArgumentParser(
+        prog = "iiscraper",
+        description = "this tools scrapes imdb advanced user search link, scrapes movie titles and year and searches images in duckduckgo, downloads them, and resizes them",
+        epilog = "your life must be good now that my job is over")
+parser.add_argument("-u", "--url", required = True, help = "the url link to imdb",)
+parser.add_argument("-o", "--out", required = True, help = "the output location on disk where the images will be saved")
+parser.add_argument("-s", "--size", default = 400, help = "the height size in pxls, with will be calculated respectin the original aspect, default value 400")
+
+
 
 ### from imdb user search buid a list of tuples database of movies/year
 def scrapeImdb(movie_data, data):
@@ -34,7 +44,6 @@ def scrapeImdb(movie_data, data):
 def searchDuck(data, fullData):
     print("\nSearching DuckDuckGo for images")
     for year, name in data:
-        print(name)
         searchKey = "%s %s US Movie Poster" % (year, name)
         with DDGS() as ddgs:
             keywords = searchKey
@@ -85,12 +94,12 @@ def download(database):
     print("\nDownload :: Done")
 
 ### use PIL to conform the image size
-def conform(database):
+def conform(database, height):
     print("\nResizing images")
     ## dealing with PIL versions changes
     if not hasattr(Image, "Resampling"):
         Image.Resampling = Image
-    baseheigth = 400
+    baseheigth = height
     for img, path in database:
         i = Image.open(path)
         hpercent = (baseheigth/float(i.size[1]))
@@ -100,21 +109,21 @@ def conform(database):
         print("\nResize %s :: Done" % path)
 
 ### define base vars
+args = parser.parse_args()
 data = []
 fullData = []
 database = []
-url = "https://www.imdb.com/search/title/?role=nm7053849&sort=release_date,desc"
-# Yosuke Page
-#url = "https://www.imdb.com/search/title/?role=nm7959678&sort=year,desc"
+url = args.url
+directory = args.out
+height = args.size
 ue = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
 response = requests.get(url, headers=ue)
 soup = BeautifulSoup(response.content, "html.parser")
 movie_data = soup.findAll("div", attrs={"class": "lister-item mode-advanced"})
-directory = "%sDropbox/wrk/prjts/presentations/source/imgs" % findBaseDir()
 
 ### begin
 scrapeImdb(movie_data, data)
 searchDuck(data, fullData)
 buildDiskPath(fullData, database)
 download(database)
-conform(database)
+conform(database, height)
