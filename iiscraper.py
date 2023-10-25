@@ -22,8 +22,8 @@ parser = argparse.ArgumentParser(
         prog = "iiscraper",
         description = "this tools scrapes imdb advanced user search link, scrapes movie titles and year and searches images in duckduckgo, downloads them, and resizes them",
         epilog = "your life must be good now that my job is over")
-parser.add_argument("-u", "--url", required = True, help = "the url link to imdb",)
-parser.add_argument("-o", "--out", required = True, help = "the output location on disk where the images will be saved")
+parser.add_argument("-u", "--url", default = os.environ.get('IMDBURL'), help = "the url link to imdb, default value $IMDBURL env variable")
+parser.add_argument("-o", "--out", default = os.environ.get('IMDBFOLDER'), help = "the output location on disk where the images will be saved, default value $IMDBFOLDER env variable")
 parser.add_argument("-s", "--size", default = 400, help = "the height size in pxls, with will be calculated respectin the original aspect, default value 400")
 
 
@@ -117,6 +117,7 @@ url = args.url
 directory = args.out
 height = args.size
 ue = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
+
 response = requests.get(url, headers=ue)
 soup = BeautifulSoup(response.content, "html.parser")
 movie_data = soup.findAll("div", attrs={"class": "lister-item mode-advanced"})
