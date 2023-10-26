@@ -1,6 +1,3 @@
-# TO DO 
-# find a better way to deal with file extentions
-
 from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
 from PIL import Image
@@ -11,11 +8,12 @@ import re
 import urllib
 import argparse
 
+from pprint import pprint
 ### TO-DO
 # build argparse // basic function done, need to implement a more robust solution
 # resize trim to get same width
-# improve image extension handling
-# check if image on pil function
+# improve image extension handling, this should be done just need to check for bugs 
+# check if image on pil function, this is done, handled with urllib before than
 
 ### cli arguments build
 parser = argparse.ArgumentParser(
@@ -33,13 +31,19 @@ def scrapeImdb(movie_data, data):
     for store in movie_data:
         imageDiv = store.find("div", {"class": "lister-item-image float-left"})
         img = imageDiv.img.get("loadlate")
-        name = imageDiv.img.get("alt")
+        name = imageDiv.img.get("alt").replace("!","")
         yearDiv = str(store.find("span", {"class": "lister-item-year text-muted unbold"}))
         year = re.findall('\(([^)]+)', yearDiv)
+        ## this year meddling is ugly but necessary to deal with the inconsistency of how years are stored in imdb
         if year:
-            year = year[-1]
+            year = re.findall('\d{4}', year[-1])
+            if len(year) > 1:
+                year = "%s_%s" % (year[0], year[-1])
+            else:
+                year = year[-1]
         else:
             year = "Unreleased"
+
         data.append((year, name))
     print("\nScrape :: Done")
     return data
@@ -49,7 +53,7 @@ def searchDuck(data, fullData):
     print("\nSearching DuckDuckGo for images")
     for year, name in data:
         searchKey = "%s %s US Movie Poster" % (year, name)
-        with DDGS() as ddgs:
+        with DDGS(timeout = 20) as ddgs:
             keywords = searchKey
             ddgs_images_gen = ddgs.images(
                 keywords,
@@ -73,8 +77,8 @@ def searchDuck(data, fullData):
                     print("broken link moving with this reason HTTP Error %s %s, finding next image for %s" % (str(e.code), e.reason, name))
                 except urllib.error.URLError as e:
                     print("broken link moving with this reason URL Error %s, finding next image for %s" % (e.reason, name))
-                except urllib.error.HTTPxception as e:
-                    print("broken link moving with this reason HTTP Exception, finding next image for %s" % (name))
+                except urllib.error.ContentTooShortError as e:
+                    print("broken link moving with this reason Content Too Short Error, finding next image for %s" % (name))
     print("\nSearch :: Done")
     return fullData
 
@@ -82,7 +86,10 @@ def searchDuck(data, fullData):
 def buildDiskPath(fullData, database):
     print("\nBuilding disk paths")
     for year, name, img, ext in fullData:
-        path = "%s/%s__%s.%s" % (directory, year, name.replace(" ", "_").replace(":", ""), ext)
+        ## need to meddle with the variables to generate a pleasing file name and deal with random edge cases
+        year = year.replace("– ", "").replace("–", "_").replace(" ", "")
+        name = name.replace(" ", "_").replace(":", "").replace("/", "-")
+        path = "%s/%s__%s.%s" % (directory, year, name, ext)
         database.append((img, path))
     print("\nBuild :: Done")
     return database
@@ -119,6 +126,11 @@ url = args.url
 directory = args.out
 height = args.size
 ue = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
+
+### check if url and dir are none and require them, basically checking if env variable is missing
+if not url or not directory:
+    print("\ncouldn't find url or directory env variables please either set them or use the provided flags\n")
+    exit()
 
 response = requests.get(url, headers=ue)
 soup = BeautifulSoup(response.content, "html.parser")
