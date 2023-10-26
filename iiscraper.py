@@ -12,8 +12,8 @@ from pprint import pprint
 ### TO-DO
 # build argparse // basic function done, need to implement a more robust solution
 # resize trim to get same width
-# improve image extension handling, this should be done just need to check for bugs 
-# check if image on pil function, this is done, handled with urllib before than
+# deal with multiepisode duplication
+# might want to eventually create a json database and handle storing the info
 
 ### cli arguments build
 parser = argparse.ArgumentParser(
@@ -23,36 +23,52 @@ parser = argparse.ArgumentParser(
 parser.add_argument("-u", "--url", default = os.environ.get('IMDBURL'), help = "the url link to imdb, default value $IMDBURL env variable")
 parser.add_argument("-o", "--out", default = os.environ.get('IMDBFOLDER'), help = "the output location on disk where the images will be saved, default value $IMDBFOLDER env variable")
 parser.add_argument("-s", "--size", default = 400, help = "the height size in pxls, with will be calculated respectin the original aspect, default value 400")
-
+parser.add_argument("-l", "--list", action = "store_true", help = "if enabled provides the list of movies found")
 
 
 ### from imdb user search buid a list of tuples database of movies/year
 def scrapeImdb(movie_data, data):
     for store in movie_data:
-        imageDiv = store.find("div", {"class": "lister-item-image float-left"})
-        img = imageDiv.img.get("loadlate")
-        name = imageDiv.img.get("alt").replace("!","")
-        yearDiv = str(store.find("span", {"class": "lister-item-year text-muted unbold"}))
-        year = re.findall('\(([^)]+)', yearDiv)
+        #imageDiv = store.find("div", {"class": "lister-item-image float-left"})
+        #img = imageDiv.img.get("loadlate")
+        #name = imageDiv.img.get("alt").replace("!","")
+        #yearDiv = str(store.find("span", {"class": "lister-item-year text-muted unbold"}))
+        mainDiv = store.find("div", {"class": "lister-item-content"})
+        childDiv = mainDiv.contents[1]
+        name = childDiv.contents[3].text.strip()
+        year = childDiv.contents[5].text
+        try:
+            episode = childDiv.contents[11].text
+        except:
+            episode = None
+        #depth = 0
+        #for c in mainDiv.contents[1]:
+        #    print(depth, c)
+        #    depth +=1
+        #print(mainDiv[0].find("a"))
+        #year = re.findall('\(([^)]+)', yearDiv)
         ## this year meddling is ugly but necessary to deal with the inconsistency of how years are stored in imdb
         if year:
-            year = re.findall('\d{4}', year[-1])
+            year = re.findall('\d{4}', year)
             if len(year) > 1:
                 year = "%s_%s" % (year[0], year[-1])
+            elif len(year) < 1:
+                year = "Unreleased"
             else:
                 year = year[-1]
+        #        year = year.replace("(","").replace(")","")
         else:
             year = "Unreleased"
 
-        data.append((year, name))
+        data.append((year, name, episode))
     print("\nScrape :: Done")
-    return data
+    return data, who
 
 ### search in duckduckgo the movie poster
 def searchDuck(data, fullData):
     print("\nSearching DuckDuckGo for images")
-    for year, name in data:
-        searchKey = "%s %s US Movie Poster" % (year, name)
+    for year, name, episode in data:
+        searchKey = "%s %s US Movie Poster" % (year, name.replace("!",""))
         with DDGS(timeout = 20) as ddgs:
             keywords = searchKey
             ddgs_images_gen = ddgs.images(
@@ -117,6 +133,16 @@ def conform(database, height):
         i.save(path)
         print("\nResize %s :: Done" % path)
 
+def filmography(who, data):
+    print("\n")
+    print("%s Filmography\n%s Items\n" % (who, len(data)))
+    for year, name, episode in data:
+        if episode:
+            print("%s | %s | Episode: %s" % (year, name, episode))
+        else:
+            print("%s | %s" % (year, name))
+    print("\n")
+
 ### define base vars
 args = parser.parse_args()
 data = []
@@ -135,9 +161,12 @@ if not url or not directory:
 response = requests.get(url, headers=ue)
 soup = BeautifulSoup(response.content, "html.parser")
 movie_data = soup.findAll("div", attrs={"class": "lister-item mode-advanced"})
+who = re.findall("^[^\(]+", soup.title.string)[0].replace("With ", "").replace("\n","")
 
 ### begin
 scrapeImdb(movie_data, data)
+if args.list:
+    filmography(who, data)
 searchDuck(data, fullData)
 buildDiskPath(fullData, database)
 download(database)
