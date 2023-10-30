@@ -24,6 +24,8 @@ parser.add_argument("-s", "--size", default = 400, help = "the height size in px
 parser.add_argument("-l", "--list", action = "store_true", help = "if enabled provides the list of movies found")
 parser.add_argument("-c", "--crop", action = "store_true", help = "if enabled crops the width to the min width of the images found")
 parser.add_argument("-d", "--deform", action = "store_true", help = "if enabled deforms the width to the median width of the images found")
+parser.add_argument("-g", "--grid", action = "store_true", help = "if enabled creates a new image of a grid with all the images found inside")
+
 
 ### from imdb user search buid a list of tuples database of movies/year
 def scrapeImdb(movie_data, data):
@@ -152,6 +154,19 @@ def conform(database, height):
             i = i.resize((mw, i.size[1]), Image.Resampling.LANCZOS)
             i.save(path)
             print("\nDeform %s :: Done" % path)
+        #return mw
+
+### grid creation
+def grid(database, height, gridWidth, gridHeight, mw):
+    margin = height/20
+    w = gridWidth - (height*2)
+    h = gridHeight - (height*2)
+    wn = w / (mw+margin)
+    hn = h / (height+margin)
+    print("we can fill %s in width and %s in height" %s (wn, hn))
+    exit()
+    img = Image.new("RGB", (w,h), (255, 0, 0, 0,))
+
 
 
 ### print a list of all items found
@@ -181,6 +196,10 @@ directory = args.out
 height = args.size
 crop = args.crop
 deform = args.deform
+
+gridHeight = 1920
+gridWidth = 1080
+
 ue = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
 
 ### check if url and dir are none and require them, basically checking if env variable is missing
