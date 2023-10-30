@@ -23,6 +23,8 @@ parser.add_argument("-u", "--url", default = os.environ.get('IMDBURL'), help = "
 parser.add_argument("-o", "--out", default = os.environ.get('IMDBFOLDER'), help = "the output location on disk where the images will be saved, default value $IMDBFOLDER env variable")
 parser.add_argument("-s", "--size", default = 400, help = "the height size in pxls, with will be calculated respectin the original aspect, default value 400")
 parser.add_argument("-l", "--list", action = "store_true", help = "if enabled provides the list of movies found")
+parser.add_argument("-c", "--crop", action = "store_true", help = "if enabled crops the width to the min width of the images found")
+parser.add_argument("-d", "--deform", action = "store_true", help = "if enabled deforms the widht to the median width of the images found")
 
 ### from imdb user search buid a list of tuples database of movies/year
 def scrapeImdb(movie_data, data):
@@ -67,7 +69,7 @@ def scrapeImdb(movie_data, data):
 def searchDuck(data, fullData):
     print("\nSearching DuckDuckGo for images")
     for year, name in data:
-        searchKey = "%s %s Movie Poster" % (year, name.replace("!",""))
+        searchKey = "%s %s US Poster" % (year, name.replace("!",""))
         with DDGS(timeout = 20) as ddgs:
             keywords = searchKey
             ddgs_images_gen = ddgs.images(
@@ -124,26 +126,41 @@ def conform(database, height):
     if not hasattr(Image, "Resampling"):
         Image.Resampling = Image
     baseheigth = height
-    withs = []
+    widths = []
+    # resize based on height
     for img, path in database:
         i = Image.open(path)
         hpercent = (baseheigth/float(i.size[1]))
         wsize = int((float(i.size[0])*float(hpercent)))
-        withs.append(wsize)
+        widths.append(wsize)
         i = i.resize((wsize, baseheigth), Image.Resampling.LANCZOS)
         i.save(path)
         print("\nResize %s :: Done" % path)
-    lcd = sorted(withs)[0]
-    crops = []
-    for w in withs:
-        x = (w - lcd)/2
-        crops.append(x)
-    index = 0
-    for img, path in database:
-        i = Image.open(path)
-        i = i.crop((crops[index], 0.0, i.size[0]-crops[index], i.size[1]))
-        i.save(path)
-        index += 1
+    # resize with cropped to min width
+    if crop:
+        lcd = sorted(widths)[0]
+        crops = []
+        for w in widths:
+            x = (w - lcd)/2
+            crops.append(x)
+        index = 0
+        for img, path in database:
+            i = Image.open(path)
+            i = i.crop((crops[index], 0.0, i.size[0]-crops[index], i.size[1]))
+            i.save(path)
+            index += 1
+            print("\nCrop  %s :: Done" % path)
+    # resize alterin the aspect ratio of the original images to the median with
+    if deform:
+        sw = sorted(widths)
+        wn = len(sw)
+        mw = int((sw[int(wn/2)] + sw[(int(wn/2))+1]) / 2)
+        for img, path in database:
+            i = Image.open(path)
+            i = i.resize((mw, i.size[1]), Image.Resampling.LANCZOS)
+            i.save(path)
+            print("\nDeform %s :: Done" % path)
+
 
 ### print a list of all items found
 def filmography(who, data):
@@ -170,6 +187,8 @@ database = []
 url = args.url
 directory = args.out
 height = args.size
+crop = args.crop
+deform = args.deform
 ue = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
 
 ### check if url and dir are none and require them, basically checking if env variable is missing
@@ -188,7 +207,6 @@ scrapeImdb(movie_data, data)
 if args.list:
     filmography(who, filmData)
 data = unduplicate(data)
-print(data)
 searchDuck(data, fullData)
 buildDiskPath(fullData, database)
 download(database)
