@@ -10,9 +10,8 @@ import argparse
 
 from pprint import pprint
 ### TO-DO
-# build argparse // basic function done, need to implement a more robust solution
-# deal with multiepisode duplication
 # might want to eventually create a json database and handle storing the info
+# explore the possibility of mergin all images together in a grid like system
 
 ### cli arguments build
 parser = argparse.ArgumentParser(
@@ -24,15 +23,11 @@ parser.add_argument("-o", "--out", default = os.environ.get('IMDBFOLDER'), help 
 parser.add_argument("-s", "--size", default = 400, help = "the height size in pxls, with will be calculated respectin the original aspect, default value 400")
 parser.add_argument("-l", "--list", action = "store_true", help = "if enabled provides the list of movies found")
 parser.add_argument("-c", "--crop", action = "store_true", help = "if enabled crops the width to the min width of the images found")
-parser.add_argument("-d", "--deform", action = "store_true", help = "if enabled deforms the widht to the median width of the images found")
+parser.add_argument("-d", "--deform", action = "store_true", help = "if enabled deforms the width to the median width of the images found")
 
 ### from imdb user search buid a list of tuples database of movies/year
 def scrapeImdb(movie_data, data):
     for store in movie_data:
-        #imageDiv = store.find("div", {"class": "lister-item-image float-left"})
-        #img = imageDiv.img.get("loadlate")
-        #name = imageDiv.img.get("alt").replace("!","")
-        #yearDiv = str(store.find("span", {"class": "lister-item-year text-muted unbold"}))
         mainDiv = store.find("div", {"class": "lister-item-content"})
         childDiv = mainDiv.contents[1]
         name = childDiv.contents[3].text.strip()
@@ -41,13 +36,13 @@ def scrapeImdb(movie_data, data):
             episode = childDiv.contents[11].text
         except:
             episode = None
+        ## little utility to find indexes, left here cause I might needed in the future 
         #depth = 0
         #for c in mainDiv.contents[1]:
         #    print(depth, c)
         #    depth +=1
         #print(mainDiv[0].find("a"))
         #year = re.findall('\(([^)]+)', yearDiv)
-        ## this year meddling is ugly but necessary to deal with the inconsistency of how years are stored in imdb
         if year:
             year = re.findall('\d{4}', year)
             if len(year) > 1:
@@ -56,10 +51,8 @@ def scrapeImdb(movie_data, data):
                 year = "Unreleased"
             else:
                 year = year[-1]
-        #        year = year.replace("(","").replace(")","")
         else:
             year = "Unreleased"
-
         data.append((year, name))
         filmData.append((year, name, episode))
     print("\nScrape :: Done")
@@ -78,8 +71,7 @@ def searchDuck(data, fullData):
                 safesearch="moderate",
                 size="Large",
                 type_image="photo",
-                layout="Tall",
-            )
+                layout="Tall")
             for r in ddgs_images_gen:
                 try:
                     img = r["image"]
@@ -150,7 +142,7 @@ def conform(database, height):
             i.save(path)
             index += 1
             print("\nCrop  %s :: Done" % path)
-    # resize alterin the aspect ratio of the original images to the median with
+    # resize altering the aspect ratio of the original images to the median width
     if deform:
         sw = sorted(widths)
         wn = len(sw)
