@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import os
 import requests
 import wget
@@ -8,7 +8,6 @@ import re
 import urllib
 import argparse
 
-from pprint import pprint
 ### TO-DO
 # might want to eventually create a json database and handle storing the info
 # explore the possibility of mergin all images together in a grid like system
@@ -25,7 +24,7 @@ parser.add_argument("-l", "--list", action = "store_true", help = "if enabled pr
 parser.add_argument("-c", "--crop", action = "store_true", help = "if enabled crops the width to the min width of the images found")
 parser.add_argument("-d", "--deform", action = "store_true", help = "if enabled deforms the width to the median width of the images found")
 parser.add_argument("-g", "--grid", action = "store_true", help = "if enabled creates a new image of a grid with all the images found inside")
-
+parser.add_argument("-b", "--bypass", action = "store_true", help = "if enabled bypass search and goes directly to the folder to resize")
 
 ### from imdb user search buid a list of tuples database of movies/year
 def scrapeImdb(movie_data, data):
@@ -114,7 +113,7 @@ def download(database):
     print("\nDownload :: Done")
 
 ### use PIL to conform the image size
-def conform(database, height):
+def conform(database, height, who):
     print("\nResizing images")
     ## dealing with PIL versions changes
     if not hasattr(Image, "Resampling"):
@@ -154,20 +153,27 @@ def conform(database, height):
             i = i.resize((mw, i.size[1]), Image.Resampling.LANCZOS)
             i.save(path)
             print("\nDeform %s :: Done" % path)
-        #return mw
-
-### grid creation
-def grid(database, height, gridWidth, gridHeight, mw):
-    margin = height/20
-    w = gridWidth - (height*2)
-    h = gridHeight - (height*2)
-    wn = w / (mw+margin)
-    hn = h / (height+margin)
-    print("we can fill %s in width and %s in height" %s (wn, hn))
-    exit()
-    img = Image.new("RGB", (w,h), (255, 0, 0, 0,))
-
-
+    if grid:
+        if deform or crop:
+            margin = height/10
+            w = gridWidth - (height)
+            h = gridHeight - (height)
+            wn = int(w / (mw+margin))
+            hn = int(h / (height+margin))
+            index = 0
+            gc = Image.new("RGBA", (gridHeight, gridWidth), (255, 255, 255, 0,))
+            for j in range(int(height), int(w), int(height+margin)):
+                for k in range(int(height), int(h), int(mw+margin)):
+                    if index < len(database):
+                        gc.paste(Image.open(database[index][-1]), (int(k), int(j)))
+                        index += 1
+            draw = ImageDraw.Draw(gc)
+            font = ImageFont.truetype("/usr/share/fonts/liberation/LiberationSans-Bold.ttf", 60)
+            draw.text((h/5, w+(height/6)), "%s Filmography" % who, (30,30,30), font = font)
+            gc.save("/home/crltt/Downloads/foo.png", quality=100)
+        
+        else:
+            print("\ngrid can only be used in conjunction with either crop or deform, please add either -c or -d flag\n")
 
 ### print a list of all items found
 def filmography(who, data):
@@ -185,17 +191,24 @@ def filmography(who, data):
 def unduplicate(l):
     return list(dict.fromkeys(l))
 
+### bypass function, builds a database of images already found
+def by(path):
+    files = [("", os.path.join(path,f)) for f in os.listdir(path) if os.path.isfile(os.path.join(path,f))]
+    return(files)
+
 ### define base vars
 args = parser.parse_args()
 data = []
 filmData = []
 fullData = []
 database = []
+bypass = args.bypass
 url = args.url
 directory = args.out
-height = args.size
+height = int(args.size)
 crop = args.crop
 deform = args.deform
+grid = args.grid
 
 gridHeight = 1920
 gridWidth = 1080
@@ -214,6 +227,13 @@ movie_data = soup.findAll("div", attrs={"class": "lister-item mode-advanced"})
 who = re.findall("^[^\(]+", soup.title.string)[0].replace("With ", "").replace("\n","")
 
 ### begin
+if bypass:
+    database = by(directory)
+    if len(database) >= 1:
+        conform(database, height, who)
+    else:
+        print("\ni can't find the images required in the supplied directory, please check if the desired images are in the folder\n")
+    exit()
 scrapeImdb(movie_data, data)
 if args.list:
     filmography(who, filmData)
@@ -221,4 +241,4 @@ data = unduplicate(data)
 searchDuck(data, fullData)
 buildDiskPath(fullData, database)
 download(database)
-conform(database, height)
+conform(database, height, who)
