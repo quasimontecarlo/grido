@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
 from PIL import Image, ImageDraw, ImageFont
+from datetime import date
 import os
 import requests
 import wget
@@ -156,22 +157,36 @@ def conform(database, height, who):
     if grid:
         if deform or crop:
             margin = height/10
-            w = gridWidth - (height)
-            h = gridHeight - (height)
+            border = height
+            w = gridWidth - border
+            h = gridHeight - border
             wn = int(w / (mw+margin))
             hn = int(h / (height+margin))
             index = 0
-            gc = Image.new("RGBA", (gridHeight, gridWidth), (255, 255, 255, 0,))
-            for j in range(int(height), int(w), int(height+margin)):
-                for k in range(int(height), int(h), int(mw+margin)):
-                    if index < len(database):
+            pointsx = []
+            pointsy = []
+            gc = Image.new("RGBA", (gridWidth, gridHeight), (255, 255, 255, 0,))
+            for j in range(int(border), int(h-height), int(height+margin)):
+                for k in range(int(border), int(w-mw), int(mw+margin)):
+                    if index < len(database): 
                         gc.paste(Image.open(database[index][-1]), (int(k), int(j)))
+                        pointsx.append(int(k))
+                        pointsy.append(int(j))
                         index += 1
-            draw = ImageDraw.Draw(gc)
-            font = ImageFont.truetype("/usr/share/fonts/liberation/LiberationSans-Bold.ttf", 60)
-            draw.text((h/5, w+(height/6)), "%s Filmography" % who, (30,30,30), font = font)
-            gc.save("/home/crltt/Downloads/foo.png", quality=100)
-        
+             
+            pointsx = sorted(pointsx)
+            pointsy = sorted(pointsy)
+            gcc = gc.crop((pointsx[0], pointsy[0], pointsx[-1]+mw, pointsy[-1]+height))
+            npx = (gridWidth - gcc.size[0])/2
+            npy = (gridHeight - gcc.size[-1])/2
+            fg = Image.new("RGBA", (gridWidth, gridHeight), (255, 255, 255, 0))
+            fg.paste(gcc, (int(npx),int(npy)))
+            fg.save("%s/%s_grid.png" % (os.path.dirname(database[0][-1]), date.today().strftime("%Y")), quality=100)
+            if who:
+                draw = ImageDraw.Draw(fg)
+                font = ImageFont.truetype("coolvetica_rg.otf", 60)
+                draw.text((h/5, w+(height/6)), "%s Filmography" % who, (30,30,30), font = font)
+            print("\nGrid :: Done")
         else:
             print("\ngrid can only be used in conjunction with either crop or deform, please add either -c or -d flag\n")
 
@@ -193,8 +208,8 @@ def unduplicate(l):
 
 ### bypass function, builds a database of images already found
 def by(path):
-    files = [("", os.path.join(path,f)) for f in os.listdir(path) if os.path.isfile(os.path.join(path,f))]
-    return(files)
+    files = [("", os.path.join(path,f)) for f in os.listdir(path) if os.path.isfile(os.path.join(path,f)) and f.lower().endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp"))]
+    return files
 
 ### define base vars
 args = parser.parse_args()
@@ -210,13 +225,15 @@ crop = args.crop
 deform = args.deform
 grid = args.grid
 
-gridHeight = 1920
-gridWidth = 1080
+gridHeight = 1080
+gridWidth = 1920
 
 ue = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
 
 ### check if url and dir are none and require them, basically checking if env variable is missing
-if not url or not directory:
+if url and directory:
+    print("\nStarting my search in %s\nand will output to %s" % (url, directory))
+else:
     print("\ncouldn't find url or directory env variables please either set them or use the provided flags\n")
     exit()
 
@@ -226,7 +243,7 @@ soup = BeautifulSoup(response.content, "html.parser")
 movie_data = soup.findAll("div", attrs={"class": "lister-item mode-advanced"})
 who = re.findall("^[^\(]+", soup.title.string)[0].replace("With ", "").replace("\n","")
 
-### begin
+### if b flag then don't search
 if bypass:
     database = by(directory)
     if len(database) >= 1:
@@ -234,6 +251,8 @@ if bypass:
     else:
         print("\ni can't find the images required in the supplied directory, please check if the desired images are in the folder\n")
     exit()
+
+### begin
 scrapeImdb(movie_data, data)
 if args.list:
     filmography(who, filmData)
