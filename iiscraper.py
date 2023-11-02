@@ -2,12 +2,14 @@ from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
 from PIL import Image, ImageDraw, ImageFont
 from datetime import date
+from socket import timeout
 import os
 import requests
 import wget
 import re
 import urllib
 import argparse
+import logging
 
 ### TO-DO
 # might want to eventually create a json database and handle storing the info
@@ -73,7 +75,8 @@ def searchDuck(data, fullData):
                 safesearch="moderate",
                 size="Large",
                 type_image="photo",
-                layout="Tall")
+                layout="Tall",
+                )
             for r in ddgs_images_gen:
                 try:
                     img = r["image"]
@@ -85,11 +88,16 @@ def searchDuck(data, fullData):
                         print("found movie poster for %s" % name)
                     break
                 except urllib.error.HTTPError as e:
-                    print("broken link moving with this reason HTTP Error %s %s, finding next image for %s" % (str(e.code), e.reason, name))
+                    logging.error("broken link moving with this reason HTTP Error %s %s, finding next image for %s" % (str(e.code), e.reason, name))
                 except urllib.error.URLError as e:
-                    print("broken link moving with this reason URL Error %s, finding next image for %s" % (e.reason, name))
+                    if isinstance(e.reason, timeout):
+                        logging.error("broken link moving with this reason URL Error %s, finding next image for %s" % (e.reason, name))
+                    else:
+                        logging.error("broken link moving with this reason URL Error %s, finding next image for %s" % (e.reason, name))
                 except urllib.error.ContentTooShortError as e:
-                    print("broken link moving with this reason Content Too Short Error, finding next image for %s" % (name))
+                    logging.error("broken link moving with this reason Content Too Short Error, finding next image for %s" % (name))
+                except timeout as e:
+                    logging.error("socket timeout")
     print("\nSearch :: Done")
     return fullData
 
@@ -166,6 +174,7 @@ def conform(database, height, who):
             pointsx = []
             pointsy = []
             gc = Image.new("RGBA", (gridWidth, gridHeight), (255, 255, 255, 0,))
+            database = sortuple(database)
             for j in range(int(border), int(h-height), int(height+margin)):
                 for k in range(int(border), int(w-mw), int(mw+margin)):
                     if index < len(database): 
@@ -181,11 +190,22 @@ def conform(database, height, who):
             npy = (gridHeight - gcc.size[-1])/2
             fg = Image.new("RGBA", (gridWidth, gridHeight), (255, 255, 255, 0))
             fg.paste(gcc, (int(npx),int(npy)))
-            fg.save("%s/%s_grid.png" % (os.path.dirname(database[0][-1]), date.today().strftime("%Y")), quality=100)
             if who:
                 draw = ImageDraw.Draw(fg)
-                font = ImageFont.truetype("coolvetica_rg.otf", 60)
-                draw.text((h/5, w+(height/6)), "%s Filmography" % who, (30,30,30), font = font)
+                bfont = ImageFont.truetype("alte_din_gepraegt.ttf", 60)
+                rfont = ImageFont.truetype("alte_din_regular.ttf", 14)
+                mn = ""
+                counter = 1
+                for n in database:
+                    if counter % 7 == 0:
+                        mn = mn + "\n%s-%s | " % (os.path.splitext(os.path.basename(n[-1]))[0].split("__")[0], os.path.splitext(os.path.basename(n[-1]))[0].split("__")[-1].replace("_"," "))
+                        counter += 1
+                    else:
+                        mn = mn +  "%s-%s | " % (os.path.splitext(os.path.basename(n[-1]))[0].split("__")[0], os.path.splitext(os.path.basename(n[-1]))[0].split("__")[-1].replace("_"," "))
+                        counter += 1
+                draw.text((int(npx), int(npy)/2), "%s Filmography" % who, (30,30,30), font = bfont)
+                draw.multiline_text((int(npx), int((gcc.size[-1]+npy)+(npy/4))), "[from top/left] %s" % mn, (30,30,30), font = rfont)
+            fg.save("%s/%s_grid.png" % (os.path.dirname(database[0][-1]), date.today().strftime("%Y")), quality=100)
             print("\nGrid :: Done")
         else:
             print("\ngrid can only be used in conjunction with either crop or deform, please add either -c or -d flag\n")
@@ -210,6 +230,16 @@ def unduplicate(l):
 def by(path):
     files = [("", os.path.join(path,f)) for f in os.listdir(path) if os.path.isfile(os.path.join(path,f)) and f.lower().endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp"))]
     return files
+
+def sortuple(lt):
+    lst = len(lt)
+    for i in range(0, lst):
+        for j in range(0, lst-i-1):
+            if (lt[j][1] > lt[j+1][1]):
+                temp = lt[j]
+                lt[j] = lt[j+1]
+                lt[j+1] = temp
+    return lt
 
 ### define base vars
 args = parser.parse_args()
@@ -242,6 +272,9 @@ response = requests.get(url, headers=ue)
 soup = BeautifulSoup(response.content, "html.parser")
 movie_data = soup.findAll("div", attrs={"class": "lister-item mode-advanced"})
 who = re.findall("^[^\(]+", soup.title.string)[0].replace("With ", "").replace("\n","")
+
+directory ="%s/%s" % (directory, who.replace(" ", "_").lower())
+os.system("mkdir %s" % directory)
 
 ### if b flag then don't search
 if bypass:
