@@ -10,6 +10,7 @@ import re
 import urllib
 import argparse
 import logging
+import random
 
 ### TO-DO
 # might want to eventually create a json database and handle storing the info
@@ -22,12 +23,15 @@ parser = argparse.ArgumentParser(
         epilog = "your life must be good now that my job is over")
 parser.add_argument("-u", "--url", default = os.environ.get('IMDBURL'), help = "the url link to imdb, default value $IMDBURL env variable")
 parser.add_argument("-o", "--out", default = os.environ.get('IMDBFOLDER'), help = "the output location on disk where the images will be saved, default value $IMDBFOLDER env variable")
-parser.add_argument("-s", "--size", default = 400, help = "the height size in pxls, with will be calculated respectin the original aspect, default value 400")
+parser.add_argument("-s", "--size", default = 200, help = "the height size in pxls, with will be calculated respectin the original aspect, default value 400")
 parser.add_argument("-l", "--list", action = "store_true", help = "if enabled provides the list of movies found")
 parser.add_argument("-c", "--crop", action = "store_true", help = "if enabled crops the width to the min width of the images found")
 parser.add_argument("-d", "--deform", action = "store_true", help = "if enabled deforms the width to the median width of the images found")
 parser.add_argument("-g", "--grid", action = "store_true", help = "if enabled creates a new image of a grid with all the images found inside")
+parser.add_argument("-gs", "--gridSize", default = "1920x1080",help = "control the grid image size, default 1920x1080, to make it work please use format $Wx$H")
+parser.add_argument("-gnl", "--gridNewLine", default = 7, type = int, help = "control when the movie list text goes to a new line, the value indicates after how many items there's a new line?, the value needs to be an integer")
 parser.add_argument("-b", "--bypass", action = "store_true", help = "if enabled bypass search and goes directly to the folder to resize")
+
 
 ### from imdb user search buid a list of tuples database of movies/year
 def scrapeImdb(movie_data, data):
@@ -48,7 +52,7 @@ def scrapeImdb(movie_data, data):
         #print(mainDiv[0].find("a"))
         #year = re.findall('\(([^)]+)', yearDiv)
         if year:
-            year = re.findall('\d{4}', year)
+            year = re.findall('\d{4}',year)
             if len(year) > 1:
                 year = "%s_%s" % (year[0], year[-1])
             elif len(year) < 1:
@@ -88,16 +92,16 @@ def searchDuck(data, fullData):
                         print("found movie poster for %s" % name)
                     break
                 except urllib.error.HTTPError as e:
-                    logging.error("broken link moving with this reason HTTP Error %s %s, finding next image for %s" % (str(e.code), e.reason, name))
+                    logging.error("broken link | reason HTTP Error %s %s | on %s | will try next result" % (str(e.code), e.reason, name))
                 except urllib.error.URLError as e:
                     if isinstance(e.reason, timeout):
-                        logging.error("broken link moving with this reason URL Error %s, finding next image for %s" % (e.reason, name))
+                        logging.error("broken link | reason URL Error %s | on %s | will try next result" % (e.reason, name))
                     else:
-                        logging.error("broken link moving with this reason URL Error %s, finding next image for %s" % (e.reason, name))
+                        logging.error("broken link | reason URL Error %s | on %s | will try next result" % (e.reason, name))
                 except urllib.error.ContentTooShortError as e:
-                    logging.error("broken link moving with this reason Content Too Short Error, finding next image for %s" % (name))
+                    logging.error("broken link | reason Content Too Short Error | on %s | will try next result" % name)
                 except timeout as e:
-                    logging.error("socket timeout")
+                    logging.error("broken link | reason Socket Timeout | on %s | will try the next result" % name)
     print("\nSearch :: Done")
     return fullData
 
@@ -151,6 +155,7 @@ def conform(database, height, who):
             i = i.crop((crops[index], 0.0, i.size[0]-crops[index], i.size[1]))
             i.save(path)
             index += 1
+            mw = lcd
             print("\nCrop  %s :: Done" % path)
     # resize altering the aspect ratio of the original images to the median width
     if deform:
@@ -197,12 +202,12 @@ def conform(database, height, who):
                 mn = ""
                 counter = 1
                 for n in database:
-                    if counter % 7 == 0:
-                        mn = mn + "\n%s-%s | " % (os.path.splitext(os.path.basename(n[-1]))[0].split("__")[0], os.path.splitext(os.path.basename(n[-1]))[0].split("__")[-1].replace("_"," "))
-                        counter += 1
+                    iname =  "%s-%s | " % (os.path.splitext(os.path.basename(n[-1]))[0].split("__")[0].replace("_", "/"), os.path.splitext(os.path.basename(n[-1]))[0].split("__")[-1].replace("_"," "))
+                    if counter % args.gridNewLine == 0:
+                        mn = mn + "\n" + iname
                     else:
-                        mn = mn +  "%s-%s | " % (os.path.splitext(os.path.basename(n[-1]))[0].split("__")[0], os.path.splitext(os.path.basename(n[-1]))[0].split("__")[-1].replace("_"," "))
-                        counter += 1
+                        mn = mn + iname
+                    counter += 1
                 draw.text((int(npx), int(npy)/2), "%s Filmography" % who, (30,30,30), font = bfont)
                 draw.multiline_text((int(npx), int((gcc.size[-1]+npy)+(npy/4))), "[from top/left] %s" % mn, (30,30,30), font = rfont)
             fg.save("%s/%s_grid.png" % (os.path.dirname(database[0][-1]), date.today().strftime("%Y")), quality=100)
@@ -255,10 +260,14 @@ crop = args.crop
 deform = args.deform
 grid = args.grid
 
-gridHeight = 1080
-gridWidth = 1920
+### adding a list of a lot of user agent to avoid getting refused after multiple attempts
+uel = ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.69", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.1", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.3", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.3 Safari/605.1.1", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.3", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.76", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.61", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/119.0", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"]
 
-ue = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
+gs = re.findall('\d{4}', args.gridSize)
+gridWidth = int(gs[0])
+gridHeight = int(gs[-1])
+
+ue = {'User-Agent': random.choice(uel)}
 
 ### check if url and dir are none and require them, basically checking if env variable is missing
 if url and directory:
@@ -272,6 +281,11 @@ response = requests.get(url, headers=ue)
 soup = BeautifulSoup(response.content, "html.parser")
 movie_data = soup.findAll("div", attrs={"class": "lister-item mode-advanced"})
 who = re.findall("^[^\(]+", soup.title.string)[0].replace("With ", "").replace("\n","")
+
+### this is a cheap way go around a weird bug which seems to me related to bs and imdb booting me off the site i guess for many attempts ?
+if who == "Advanced search":
+    print("\nConnection refused, please try again\n")
+    exit()
 
 directory ="%s/%s" % (directory, who.replace(" ", "_").lower())
 os.system("mkdir %s" % directory)
