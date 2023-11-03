@@ -240,7 +240,7 @@ def sortuple(lt):
     lst = len(lt)
     for i in range(0, lst):
         for j in range(0, lst-i-1):
-            if (lt[j][1] > lt[j+1][1]):
+            if (lt[j][1] < lt[j+1][1]):
                 temp = lt[j]
                 lt[j] = lt[j+1]
                 lt[j+1] = temp
