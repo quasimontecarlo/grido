@@ -31,7 +31,7 @@ parser.add_argument("-g", "--grid", action = "store_true", help = "if enabled cr
 parser.add_argument("-gs", "--gridSize", default = "1920x1080",help = "control the grid image size, default 1920x1080, to make it work please use format $Wx$H")
 parser.add_argument("-gnl", "--gridNewLine", default = 7, type = int, help = "control when the movie list text goes to a new line, the value indicates after how many items there's a new line?, the value needs to be an integer")
 parser.add_argument("-b", "--bypass", action = "store_true", help = "if enabled bypass search and goes directly to the folder to resize")
-
+parser.add_argument("-ko", "--keepOriginals", action = "store_true", help = "if enabled stores the original images in a subfolder that the script will create")
 
 ### from imdb user search buid a list of tuples database of movies/year
 def scrapeImdb(movie_data, data):
@@ -124,6 +124,12 @@ def download(database):
         wget.download(img, path)
         print("\nDownloading this :\n%s\n\nHere :\n%s\n\n" % (img, path))
     print("\nDownload :: Done")
+    if args.keepOriginals:
+        of = "%s/originals" % os.path.dirname(database[0][-1])
+        os.system("mkdir %s" % of)
+        for img, path in database:
+            os.system("cp %s %s/%s" % (path, of, os.path.basename(path)))
+    print("\nSince you asked I've copied the originals here %s to keep em safe\n" % of)
 
 ### use PIL to conform the image size
 def conform(database, height, who):
