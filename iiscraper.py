@@ -129,7 +129,7 @@ def download(database):
         os.system("mkdir %s" % of)
         for img, path in database:
             os.system("cp %s %s/%s" % (path, of, os.path.basename(path)))
-    print("\nSince you asked I've copied the originals here %s to keep em safe\n" % of)
+        print("\nSince you asked I've copied the originals here %s to keep em safe\n" % of)
 
 ### use PIL to conform the image size
 def conform(database, height, who):
