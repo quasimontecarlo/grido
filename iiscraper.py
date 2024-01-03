@@ -1,14 +1,17 @@
 from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
+from datetime import date
+from socket import timeout
 import os
 import requests
 import wget
 import re
 import urllib
 import argparse
+import logging
+import random
 
-from pprint import pprint
 ### TO-DO
 # might want to eventually create a json database and handle storing the info
 # explore the possibility of mergin all images together in a grid like system
@@ -20,10 +23,15 @@ parser = argparse.ArgumentParser(
         epilog = "your life must be good now that my job is over")
 parser.add_argument("-u", "--url", default = os.environ.get('IMDBURL'), help = "the url link to imdb, default value $IMDBURL env variable")
 parser.add_argument("-o", "--out", default = os.environ.get('IMDBFOLDER'), help = "the output location on disk where the images will be saved, default value $IMDBFOLDER env variable")
-parser.add_argument("-s", "--size", default = 400, help = "the height size in pxls, with will be calculated respectin the original aspect, default value 400")
+parser.add_argument("-s", "--size", default = 200, help = "the height size in pxls, with will be calculated respectin the original aspect, default value 400")
 parser.add_argument("-l", "--list", action = "store_true", help = "if enabled provides the list of movies found")
 parser.add_argument("-c", "--crop", action = "store_true", help = "if enabled crops the width to the min width of the images found")
 parser.add_argument("-d", "--deform", action = "store_true", help = "if enabled deforms the width to the median width of the images found")
+parser.add_argument("-g", "--grid", action = "store_true", help = "if enabled creates a new image of a grid with all the images found inside")
+parser.add_argument("-gs", "--gridSize", default = "1920x1080",help = "control the grid image size, default 1920x1080, to make it work please use format $Wx$H")
+parser.add_argument("-gnl", "--gridNewLine", default = 7, type = int, help = "control when the movie list text goes to a new line, the value indicates after how many items there's a new line?, the value needs to be an integer")
+parser.add_argument("-b", "--bypass", action = "store_true", help = "if enabled bypass search and goes directly to the folder to resize")
+parser.add_argument("-ko", "--keepOriginals", action = "store_true", help = "if enabled stores the original images in a subfolder that the script will create")
 
 ### from imdb user search buid a list of tuples database of movies/year
 def scrapeImdb(movie_data, data):
@@ -44,7 +52,7 @@ def scrapeImdb(movie_data, data):
         #print(mainDiv[0].find("a"))
         #year = re.findall('\(([^)]+)', yearDiv)
         if year:
-            year = re.findall('\d{4}', year)
+            year = re.findall('\d{4}',year)
             if len(year) > 1:
                 year = "%s_%s" % (year[0], year[-1])
             elif len(year) < 1:
@@ -71,7 +79,8 @@ def searchDuck(data, fullData):
                 safesearch="moderate",
                 size="Large",
                 type_image="photo",
-                layout="Tall")
+                layout="Tall",
+                )
             for r in ddgs_images_gen:
                 try:
                     img = r["image"]
@@ -83,11 +92,16 @@ def searchDuck(data, fullData):
                         print("found movie poster for %s" % name)
                     break
                 except urllib.error.HTTPError as e:
-                    print("broken link moving with this reason HTTP Error %s %s, finding next image for %s" % (str(e.code), e.reason, name))
+                    logging.error("broken link | reason HTTP Error %s %s | on %s | will try next result" % (str(e.code), e.reason, name))
                 except urllib.error.URLError as e:
-                    print("broken link moving with this reason URL Error %s, finding next image for %s" % (e.reason, name))
+                    if isinstance(e.reason, timeout):
+                        logging.error("broken link | reason URL Error %s | on %s | will try next result" % (e.reason, name))
+                    else:
+                        logging.error("broken link | reason URL Error %s | on %s | will try next result" % (e.reason, name))
                 except urllib.error.ContentTooShortError as e:
-                    print("broken link moving with this reason Content Too Short Error, finding next image for %s" % (name))
+                    logging.error("broken link | reason Content Too Short Error | on %s | will try next result" % name)
+                except timeout as e:
+                    logging.error("broken link | reason Socket Timeout | on %s | will try the next result" % name)
     print("\nSearch :: Done")
     return fullData
 
@@ -110,9 +124,15 @@ def download(database):
         wget.download(img, path)
         print("\nDownloading this :\n%s\n\nHere :\n%s\n\n" % (img, path))
     print("\nDownload :: Done")
+    if args.keepOriginals:
+        of = "%s/originals" % os.path.dirname(database[0][-1])
+        os.system("mkdir %s" % of)
+        for img, path in database:
+            os.system("cp %s %s/%s" % (path, of, os.path.basename(path)))
+        print("\nSince you asked I've copied the originals here %s to keep em safe\n" % of)
 
 ### use PIL to conform the image size
-def conform(database, height):
+def conform(database, height, who):
     print("\nResizing images")
     ## dealing with PIL versions changes
     if not hasattr(Image, "Resampling"):
@@ -141,6 +161,7 @@ def conform(database, height):
             i = i.crop((crops[index], 0.0, i.size[0]-crops[index], i.size[1]))
             i.save(path)
             index += 1
+            mw = lcd
             print("\nCrop  %s :: Done" % path)
     # resize altering the aspect ratio of the original images to the median width
     if deform:
@@ -152,7 +173,53 @@ def conform(database, height):
             i = i.resize((mw, i.size[1]), Image.Resampling.LANCZOS)
             i.save(path)
             print("\nDeform %s :: Done" % path)
-
+    if grid:
+        if deform or crop:
+            margin = height/10
+            border = height
+            w = gridWidth - border
+            h = gridHeight - border
+            wn = int(w / (mw+margin))
+            hn = int(h / (height+margin))
+            index = 0
+            pointsx = []
+            pointsy = []
+            gc = Image.new("RGBA", (gridWidth, gridHeight), (255, 255, 255, 0,))
+            database = sortuple(database)
+            for j in range(int(border), int(h-height), int(height+margin)):
+                for k in range(int(border), int(w-mw), int(mw+margin)):
+                    if index < len(database): 
+                        gc.paste(Image.open(database[index][-1]), (int(k), int(j)))
+                        pointsx.append(int(k))
+                        pointsy.append(int(j))
+                        index += 1
+             
+            pointsx = sorted(pointsx)
+            pointsy = sorted(pointsy)
+            gcc = gc.crop((pointsx[0], pointsy[0], pointsx[-1]+mw, pointsy[-1]+height))
+            npx = (gridWidth - gcc.size[0])/2
+            npy = (gridHeight - gcc.size[-1])/2
+            fg = Image.new("RGBA", (gridWidth, gridHeight), (255, 255, 255, 0))
+            fg.paste(gcc, (int(npx),int(npy)))
+            if who:
+                draw = ImageDraw.Draw(fg)
+                bfont = ImageFont.truetype("alte_din_gepraegt.ttf", 60)
+                rfont = ImageFont.truetype("alte_din_regular.ttf", 14)
+                mn = ""
+                counter = 1
+                for n in database:
+                    iname =  "%s-%s | " % (os.path.splitext(os.path.basename(n[-1]))[0].split("__")[0].replace("_", "/"), os.path.splitext(os.path.basename(n[-1]))[0].split("__")[-1].replace("_"," "))
+                    if counter % args.gridNewLine == 0:
+                        mn = mn + "\n" + iname
+                    else:
+                        mn = mn + iname
+                    counter += 1
+                draw.text((int(npx), int(npy)/2), "%s Filmography" % who, (30,30,30), font = bfont)
+                draw.multiline_text((int(npx), int((gcc.size[-1]+npy)+(npy/4))), "[from top/left] %s" % mn, (30,30,30), font = rfont)
+            fg.save("%s/%s_grid.png" % (os.path.dirname(database[0][-1]), date.today().strftime("%Y")), quality=100)
+            print("\nGrid :: Done")
+        else:
+            print("\ngrid can only be used in conjunction with either crop or deform, please add either -c or -d flag\n")
 
 ### print a list of all items found
 def filmography(who, data):
@@ -170,21 +237,48 @@ def filmography(who, data):
 def unduplicate(l):
     return list(dict.fromkeys(l))
 
+### bypass function, builds a database of images already found
+def by(path):
+    files = [("", os.path.join(path,f)) for f in os.listdir(path) if os.path.isfile(os.path.join(path,f)) and f.lower().endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp"))]
+    return files
+
+def sortuple(lt):
+    lst = len(lt)
+    for i in range(0, lst):
+        for j in range(0, lst-i-1):
+            if (lt[j][1] < lt[j+1][1]):
+                temp = lt[j]
+                lt[j] = lt[j+1]
+                lt[j+1] = temp
+    return lt
+
 ### define base vars
 args = parser.parse_args()
 data = []
 filmData = []
 fullData = []
 database = []
+bypass = args.bypass
 url = args.url
 directory = args.out
-height = args.size
+height = int(args.size)
 crop = args.crop
 deform = args.deform
-ue = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
+grid = args.grid
+
+### adding a list of a lot of user agent to avoid getting refused after multiple attempts
+uel = ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.69", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.1", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.3", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.3 Safari/605.1.1", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.3", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.76", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.61", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/119.0", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"]
+
+gs = re.findall('\d{4}', args.gridSize)
+gridWidth = int(gs[0])
+gridHeight = int(gs[-1])
+
+ue = {'User-Agent': random.choice(uel)}
 
 ### check if url and dir are none and require them, basically checking if env variable is missing
-if not url or not directory:
+if url and directory:
+    print("\nStarting my search in %s\nand will output to %s" % (url, directory))
+else:
     print("\ncouldn't find url or directory env variables please either set them or use the provided flags\n")
     exit()
 
@@ -194,6 +288,23 @@ soup = BeautifulSoup(response.content, "html.parser")
 movie_data = soup.findAll("div", attrs={"class": "lister-item mode-advanced"})
 who = re.findall("^[^\(]+", soup.title.string)[0].replace("With ", "").replace("\n","")
 
+### this is a cheap way go around a weird bug which seems to me related to bs and imdb booting me off the site i guess for many attempts ?
+if who == "Advanced search":
+    print("\nConnection refused, please try again\n")
+    exit()
+
+directory ="%s/%s" % (directory, who.replace(" ", "_").lower())
+os.system("mkdir %s" % directory)
+
+### if b flag then don't search
+if bypass:
+    database = by(directory)
+    if len(database) >= 1:
+        conform(database, height, who)
+    else:
+        print("\ni can't find the images required in the supplied directory, please check if the desired images are in the folder\n")
+    exit()
+
 ### begin
 scrapeImdb(movie_data, data)
 if args.list:
@@ -202,4 +313,4 @@ data = unduplicate(data)
 searchDuck(data, fullData)
 buildDiskPath(fullData, database)
 download(database)
-conform(database, height)
+conform(database, height, who)
