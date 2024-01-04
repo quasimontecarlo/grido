@@ -36,21 +36,17 @@ parser.add_argument("-ko", "--keepOriginals", action = "store_true", help = "if 
 ### from imdb user search buid a list of tuples database of movies/year
 def scrapeImdb(movie_data, data):
     for store in movie_data:
-        mainDiv = store.find("div", {"class": "lister-item-content"})
-        childDiv = mainDiv.contents[1]
-        name = childDiv.contents[3].text.strip()
-        year = childDiv.contents[5].text
         try:
-            episode = childDiv.contents[11].text
+            names = store.findAll("h3", {"class": "ipc-title__text"})
+            year = store.find("span", {"class": "dli-title-metadata-item"}).text
+            name = re.match("[^ ]* (.*)", names[0].text).group(1)
+            if len(names) > 1:
+                episode = names[-1].text
+            else:
+                episode = None
         except:
-            episode = None
-        ## little utility to find indexes, left here cause I might needed in the future 
-        #depth = 0
-        #for c in mainDiv.contents[1]:
-        #    print(depth, c)
-        #    depth +=1
-        #print(mainDiv[0].find("a"))
-        #year = re.findall('\(([^)]+)', yearDiv)
+            print("webpage must have changed, please raise a github issue")
+            exit()
         if year:
             year = re.findall('\d{4}',year)
             if len(year) > 1:
@@ -203,8 +199,8 @@ def conform(database, height, who):
             fg.paste(gcc, (int(npx),int(npy)))
             if who:
                 draw = ImageDraw.Draw(fg)
-                bfont = ImageFont.truetype("alte_din_gepraegt.ttf", 60)
-                rfont = ImageFont.truetype("alte_din_regular.ttf", 14)
+                bfont = ImageFont.truetype("font/alte_din_gepraegt.ttf", 60)
+                rfont = ImageFont.truetype("font/alte_din_regular.ttf", 14)
                 mn = ""
                 counter = 1
                 for n in database:
@@ -285,16 +281,22 @@ else:
 ### connect to the web with bs
 response = requests.get(url, headers=ue)
 soup = BeautifulSoup(response.content, "html.parser")
-movie_data = soup.findAll("div", attrs={"class": "lister-item mode-advanced"})
-who = re.findall("^[^\(]+", soup.title.string)[0].replace("With ", "").replace("\n","")
-
+movie_data = soup.findAll("div", attrs={"class": "ipc-metadata-list-summary-item__tc"})
+#who = re.findall("^[^\(]+", soup.title.string)[0].replace("With ", "").replace("\n","")
+who = soup.find("span", attrs={"class": "ipc-chip__text"}).string
 ### this is a cheap way go around a weird bug which seems to me related to bs and imdb booting me off the site i guess for many attempts ?
 if who == "Advanced search":
     print("\nConnection refused, please try again\n")
     exit()
+if len(movie_data) == 0:
+    print("\nCouldn't find what I was looking for, check the link provided")
+    exit()
 
 directory ="%s/%s" % (directory, who.replace(" ", "_").lower())
-os.system("mkdir %s" % directory)
+if not os.path.isdir(directory):
+    os.system("mkdir %s" % directory)
+else:
+    print("\ndirectory exists, skipping creation")
 
 ### if b flag then don't search
 if bypass:

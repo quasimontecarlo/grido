@@ -1,0 +1,5 @@
+bs4
+duckduckgo_search
+Pillow
+requests
+wget
