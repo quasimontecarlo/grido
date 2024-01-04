@@ -1,4 +1,4 @@
-# iiscraper
+# grido
 user's imdb image scraper
 
 
