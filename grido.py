@@ -14,11 +14,10 @@ import random
 
 ### TO-DO
 # might want to eventually create a json database and handle storing the info
-# explore the possibility of mergin all images together in a grid like system
 
 ### cli arguments build
 parser = argparse.ArgumentParser(
-        prog = "iiscraper",
+        prog = "grido",
         description = "this tools scrapes imdb advanced user search link, scrapes movie titles and year and searches images in duckduckgo, downloads them, and resizes them",
         epilog = "your life must be good now that my job is over")
 parser.add_argument("-u", "--url", default = os.environ.get('IMDBURL'), help = "the url link to imdb, default value $IMDBURL env variable")
